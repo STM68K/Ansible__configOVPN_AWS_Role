@@ -22,7 +22,7 @@ ansible_keyou                  : Colledge_student */ things for vars.j2&&RHvars.
 ovpn_port                      : 443 /*
 ovpn_proto                     : tcp   */ things for server.j2 && rhserver.j2
 ansible_interface_for_firewall : eth0 // thing for firewall rules, interface that ovpn will use, for default eth0
-Enjoy and use it!
+Enjoy and use it! 
 
 
 
