@@ -1,0 +1,12 @@
+---
+# vars file for configOVPN
+ansible_keycount               : UA
+ansible_keyprov                : OD
+ansible_keycity                : OD
+ansible_keyorg                 : KZI
+ansible_keyemail               : admin@example.com
+ansible_keyou                  : Colledge_student
+ovpn_port                      : 443
+ovpn_proto                     : tcp
+ansible_interface_for_firewall : eth0
+
