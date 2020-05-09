@@ -1,0 +1,13 @@
+---
+# handlers file for configOVPN
+- name: Restart openvpn@server
+  service: name=openvpn@server state=restarted
+  when: ansible_os_family == "Debian"
+
+- name: Restart openvpn@server_RedHat
+  service: name=openvpn-server@server state=restarted
+  when: ansible_os_family == "RedHat"
+
+- name: Restart openvpn@server_suse
+  service: name=openvpn@server state=restarted
+  when: ansible_distribution == "SLES"

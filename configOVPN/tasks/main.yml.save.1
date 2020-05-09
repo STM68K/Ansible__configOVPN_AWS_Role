@@ -1,0 +1,102 @@
+---
+
+- block: #<----For_Debian_Based_System_Only---->
+
+
+  - name: Install OVPN
+    shell: >
+       apt-get update;
+       apt-get install -y  openvpn easy-rsa;       
+          
+    args:
+      executable: /bin/bash
+  
+
+  - name: make-cadir
+    shell: make-cadir  ~/openvpn-ca
+    ignore_errors: yes
+
+
+
+  - name: Template vars
+    template: src=vars.j2 dest=~/openvpn-ca/vars mode=0644
+
+  - name:  Creates key && serverkey && clientkey 
+    shell: >
+      source vars;
+      ./clean-all;
+      yes "" | ./build-ca; 
+      ./build-key-server --batch  server;
+      yes "" |  ./build-dh;
+      openvpn --genkey --secret keys/ta.key;
+      yes "" | ./build-key client.{{ ansible_hostname }};       
+
+    args:
+      chdir: ~/openvpn-ca/
+      executable: /bin/bash
+
+  - name: Create test key for delete function
+    shell: >
+      source vars;
+      yes "" | ./build-key test123;
+
+    args:
+      chdir: ~/openvpn-ca/
+      executable: /bin/bash
+
+  - name: Copy key&sertificats to /etc/openvpn
+    copy:
+      remote_src: yes
+      src: ~/openvpn-ca/keys/{{ item }}
+      dest: /etc/openvpn/
+    loop: 
+        - ca.crt
+        - server.crt
+        - server.key
+        - ta.key
+        - dh2048.pem
+
+
+  - name: Copy server.conf template   
+    template: src=server.j2 dest=/etc/openvpn/server.conf mode=0644
+
+  - name: copy sysctl.conf
+    template: src=sysctl.j2 dest=/etc/sysctl.conf mode=0644
+
+  - name: Apply config
+    shell: sysctl -p
+
+  - name: Config Firewall for OVPN
+    template: src=before.rules.j2 dest=/etc/ufw/before.rules mode=0644 
+
+  - name: Cofig Firewall for packages to OVPN
+    template: src=ufw.j2 dest=/etc/default/ufw mode=0640
+
+  - name: Allowing ports for OVPN
+    shell: >
+       ufw allow {{ ovpn_port }} {{ ovpn_proto }};
+       ufw allow OpenSSH;
+       ufw disable;
+       y |  ufw enable;       
+
+    args:
+      executable: /bin/bash
+
+  - name: Start&enabling ovpn@server
+    shell: >
+       systemctl start openvpn@server;
+       systemctl enable openvpn@server;
+
+  - name: Creating infrastructure for clients
+    shell: >
+       mkdir -p ~/client-configs/files;
+       chmod 700 ~/client-configs/files;
+       
+    args: 
+      executable: /bin/bash
+
+  - name: Copy client config to our remote server
+    template
+      
+  
+  when: ansible_os_family == "Debian"
