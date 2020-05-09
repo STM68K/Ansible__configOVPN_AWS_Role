@@ -1,4 +1,4 @@
-This is  a simple role for Ansible that configs openVPN for Debian,RedHat,SUSE based Linux. It tested with AWS ubuntu 16.04-18.04, RHEL 10, SUSE 15 
+This is  a simple role for Ansible that configs openVPN for Debian,RedHat,SUSE based Linux. It tested with AWS ubuntu 16.04-18.04, RHEL 10, SUSE 15 upd. added support for ubuntu 20.04
 If you found a bug, just write to me plz.
 How to work with it? Download it into your ~/roles folder, and create in ansible directory .yml file that contains
 
