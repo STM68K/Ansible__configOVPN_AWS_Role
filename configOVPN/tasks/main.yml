@@ -17,7 +17,14 @@
     ignore_errors: yes
 
   - name: copy rsa files to our dir(if ubuntu>18_04)
-    get_url: url=https://github.com/OpenVPN/easy-rsa-old/archive/2.3.3.tar.gz dest=~/openvpn-ca/
+    shell: >
+      wget https://github.com/OpenVPN/easy-rsa-old/archive/2.3.3.tar.gz;
+      tar xvfz 2.3.3.tar.gz;
+      cp -rf /usr/local/src/easy-rsa-old-2.3.3/easy-rsa/2.0/* ~/openvpn-ca;
+
+    args:
+      chdir: /usr/local/src/ 
+      executable: /bin/bash    
     when: ansible_distribution_version>"18_04"
 
 
