@@ -17,7 +17,14 @@
     ignore_errors: yes
 
   - name: copy rsa files to our dir(if ubuntu>18_04)
-    get_url: url=https://github.com/OpenVPN/easy-rsa-old/archive/2.3.3.tar.gz dest=~/openvpn-ca/
+    shell: >
+      wget https://github.com/OpenVPN/easy-rsa-old/archive/2.3.3.tar.gz;
+      tar xvfz 2.3.3.tar.gz;
+      cp -rf /usr/local/src/easy-rsa-old-2.3.3/easy-rsa/2.0/* ~/openvpn-ca;
+
+    args:
+      chdir: /usr/local/src/ 
+      executable: /bin/bash    
     when: ansible_distribution_version>"18_04"
 
 
@@ -181,6 +188,208 @@
 
 
   when: ansible_os_family == "Debian"
+  
+- block: #<------For_AmazonLinux_Only-------->
+  
+
+  - name: Update yum
+    shell: >
+      yum update -y;
+
+    args:
+     executable: /bin/bash
+
+  - name: Install OVPN to Amazon
+    shell: >
+      yum -y -y install https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm;
+      yum -y install openvpn;
+   
+    args:
+      executable: /bin/bash      
+    ignore_errors: yes
+
+
+  - name: Install iptables firewall
+    shell: >
+      yum install -y iptables-services;
+
+    args:
+      executable: /bin/bash
+
+  - name: Mkdir
+    shell: mkdir /etc/openvpn/easy-rsa
+    ignore_errors: yes
+
+  
+
+  - name: copy rsa files to our dir
+    shell: >
+      wget https://github.com/OpenVPN/easy-rsa-old/archive/2.3.3.tar.gz;
+      tar xvfz 2.3.3.tar.gz;
+      cp  /usr/local/src/easy-rsa-old-2.3.3/easy-rsa/2.0/* /etc/openvpn/easy-rsa;
+
+    args:
+      chdir: /usr/local/src/ 
+      executable: /bin/bash    
+
+  - name: copy easy-rsa to /etc
+    shell: >
+      cp  openssl-1.0.0.cnf openssl.cnf;
+
+    args:
+      chdir: /etc/openvpn/easy-rsa
+      executable: /bin/bash
+
+  - name: Copy vars 
+    template: src=RHvars.j2 dest=/etc/openvpn/easy-rsa/vars mode=644
+
+
+
+  - name:  Creates key && serverkey && clientkey
+    shell: >
+      source ./vars;
+      ./clean-all;
+      yes "" | ./build-ca;
+      ./build-key-server --batch  server;
+      yes "" |  ./build-dh;
+      openvpn --genkey --secret keys/ta.key;
+      yes  "" | ./build-key --batch  client.{{ ansible_hostname }};
+ 
+    args:
+      chdir: /etc/openvpn/easy-rsa
+      executable: /bin/bash
+
+
+  - name: Create test key for delete function
+    shell: >
+      source vars;
+      yes "" | ./build-key --batch  test123;
+
+    args:
+      chdir: /etc/openvpn/easy-rsa
+      executable: /bin/bash
+
+   
+
+  - name: Copy key&sertificats to /etc/openvpn
+    copy:
+      remote_src: yes
+      src: /etc/openvpn/easy-rsa/keys/{{ item }}
+      dest: /etc/openvpn/
+    loop:
+        - ca.crt
+        - server.crt
+        - server.key
+        - dh2048.pem
+        - ta.key
+
+  - name: Copy server.conf template
+    template: src=RHserver.j2 dest=/etc/openvpn/server.conf  mode=0644 
+
+  - name: copy sysctl.conf
+    template: src=sysctl.j2 dest=/etc/sysctl.conf mode=0644
+
+  - name: Apply config
+    shell: sysctl -p
+
+    args:
+      executable: /bin/bash
+
+
+  - name: Config Firewall for OVPN
+    shell: >
+      systemctl mask firewalld;
+      systemctl enable iptables;
+      systemctl stop firewalld;
+      systemctl start iptables;
+      iptables --flush;
+      iptables -t nat -A POSTROUTING -s 10.8.0.0/24 -o {{ ansible_interface_for_firewall  }} -j MASQUERADE;
+      iptables-save > /etc/sysconfig/iptables;
+      service iptables restart;      
+
+    args:
+      executable: /bin/bash
+
+  - name: Start&enabling ovpn@server
+    shell: >
+       systemctl start openvpn-server@server;
+       systemctl enable openvpn-server@server;
+
+
+  
+  - name: Creating infrastructure for clients
+    shell: >
+       mkdir -p /etc/openvpn/client-configs;
+       mkdir -p /etc/openvpn/client-configs/files;
+       chmod 700 /etc/openvpn/client-configs/files;
+       chmod 700 /etc/openvpn/client-configs;
+
+    args:
+      executable: /bin/bash
+
+
+  - name: GetPublicIP
+    ipify_facts:
+       timeout: 60
+
+
+
+  - name: Create base.conf from template
+    template: src=base.conf.j2 dest=/etc/openvpn/client-configs/base.conf mode=644
+
+  - name: Create ./make-sh from template
+    template: src=RHmake_config.sh.j2 dest=/etc/openvpn/client-configs/make_config.sh mode=700
+
+  - name: Generete ClientKey
+    shell: >
+      ./make_config.sh client.{{ ansible_hostname }};
+      ./make_config.sh test123;
+
+    args:
+      chdir: /etc/openvpn/client-configs
+      executable: /bin/bash
+
+
+  - name: CopyKeyToHome
+    shell: >
+       cp client.{{ ansible_hostname }}.ovpn /home
+
+
+    args:
+      chdir: /etc/openvpn/client-configs/files
+      executable: /bin/bash
+
+
+  - name: GettingClientKeyToRemoteHost
+    fetch:
+      src: /home/client.{{ ansible_hostname }}.ovpn
+      dest: ClientKeys/
+      mode: 700
+
+
+  - name: RemoveOldCert
+    ignore_errors: yes
+    shell: >
+      source vars && ./revoke-full test123
+
+    args:
+      chdir: /etc/openvpn/easy-rsa/
+      executable: /bin/bash
+
+
+  - name: Copy crl.pem
+    copy:
+      remote_src: yes
+      src: /etc/openvpn/easy-rsa/keys/crl.pem
+      dest: /etc/openvpn/
+
+
+    notify:
+        - Restart openvpn@server_Amazon
+
+
+
+  when:  ansible_distribution == "Amazon"  
 
 
 - block: #<------For_RedHat_Based_Only-------->
@@ -390,7 +599,10 @@
 
 
 
-  when: ansible_os_family == "RedHat"
+  when: ansible_os_family == "RedHat" and ansible_distribution!= "Amazon"
+
+ 
+
 
 
 - block: #<-----For_SUSE_Linux_Only------>
